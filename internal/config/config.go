@@ -12,7 +12,7 @@ import (
 
 type Config struct {
 	Env         string `yaml:"env" env-default:"local"`
-	StoragePath string `yaml:"storage_path" env-required:"true"`
+	DatabaseURL string `yaml:"database_url" env:"DATABASE_URL"`
 	HTTPServer  `yaml:"http_server"`
 }
 
@@ -45,6 +45,11 @@ func MustLoad() *Config {
 
 	if err := cleanenv.ReadConfig(configPath, &cfg); err != nil {
 		log.Fatalf("cannot read config: %s", err)
+	}
+
+	if dbURL := os.Getenv("DATABASE_URL"); dbURL != "" {
+		cfg.DatabaseURL = dbURL
+		log.Printf("using DATABASE_URL from environmet")
 	}
 
 	return &cfg
