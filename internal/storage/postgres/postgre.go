@@ -24,7 +24,7 @@ func New(storagePath string) (*Storage, error) {
 
 	_, err = db.Exec(context.Background(), `
 	CREATE TABLE IF NOT EXISTS url(
-		id INTEGER PRIMARY KEY,
+		id SERIAL PRIMARY KEY,
 		alias TEXT NOT NULL UNIQUE,
 		url TEXT NOT NULL);
 	CREATE INDEX IF NOT EXISTS idx_alias ON url(alias);
@@ -39,8 +39,22 @@ func New(storagePath string) (*Storage, error) {
 func (s *Storage) SaveURL(urlToSave string, alias string) (int64, error) {
 	const op = "storage.postgres.SaveURL"
 
-	var id int64
+	var existingID int64
 	err := s.db.QueryRow(
+		context.Background(),
+		"SELECT id FROM url WHERE alias = $1",
+		alias,
+	).Scan(&existingID)
+
+	if err == nil {
+		return 0, storage.ErrURLExists
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return 0, fmt.Errorf("%s: failed to check alias: %w", op, err)
+	}
+
+	var id int64
+	err = s.db.QueryRow(
 		context.Background(),
 		`INSERT INTO url(alias, url) VALUES($1, $2)
 		 ON CONFLICT (alias) DO UPDATE SET url = EXCLUDED.url
@@ -82,6 +96,19 @@ func (s *Storage) DeleteURL(alias string) (int64, error) {
 
 	rowsAffected := result.RowsAffected()
 
+	return rowsAffected, nil
+}
+
+func (s *Storage) UpdateURL(alias string, newURL string) (int64, error) {
+	const op = "storage.postgres.UpdateURL"
+
+	result, err := s.db.Exec(context.Background(),
+		"UPDATE url SET url = $1 WHERE alias = $2", newURL, alias)
+	if err != nil {
+		return 0, fmt.Errorf("%s: execute statement: %w", op, err)
+	}
+
+	rowsAffected := result.RowsAffected()
 	return rowsAffected, nil
 }
 
